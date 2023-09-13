@@ -5,7 +5,6 @@ import string
 from collections import Counter
 from itertools import chain
 from itertools import zip_longest
-from operator import itemgetter
 
 import pymorphy2
 
@@ -13,7 +12,10 @@ import pymorphy2
 def parse_csv(filename):
     with open(filename, 'r', newline='') as csvfile:
         reader = csv.DictReader(csvfile)
-        table = {fieldname:[] for fieldname in reader.fieldnames}
+        table = {
+            fieldname:[] for fieldname in reader.fieldnames
+            if fieldname
+        }
         for row in reader:
             for fieldname, value in row.items():
                 if value:
@@ -27,47 +29,43 @@ def split_by_words(text):
     cleaned_text = re.sub(f"[{string.punctuation}]", ' ', text).strip()
     for word in cleaned_text.split():
         normalized_word = word.replace('ё', 'е')
-
         words.add(normalized_word)
     return words
 
 
-def process_words(morph, words):
-    processed_words = []
+def lemmatize(morph, words):
+    lemmas = []
     tag_pos = ['NOUN', 'ADJF', 'ADJS', 'VERB','INFN', 'ADVB']
     for word in words:
         parsed_word = morph.parse(word)[0]
         if 'LATN' in parsed_word.tag or parsed_word.tag.POS in tag_pos:
-            processed_words.append(parsed_word.normal_form)
-    return processed_words
+            lemmas.append(parsed_word.normal_form)
+    return lemmas
 
 
-def collect_answers(morph, table):
+def process_table(morph, table):
     answers = {}
+
     for fieldname in table.keys():
         column = table[fieldname]
-        answers[fieldname] = []
+        word_counter = count_words()
+        wc = None
 
         for cell in column:
             words = split_by_words(cell)
-
-            processed_words = process_words(morph, words)
-            if processed_words:
-                answers[fieldname].extend(processed_words)
+            processed_words = lemmatize(morph, words)
+            wc = word_counter(processed_words)
+        answers[fieldname] = wc
     return answers
 
 
-def count_words(table):
-    word_count = {}
-    for column_name in table.keys():
-        answers = table[column_name]
-        counter = Counter(list(answers))
-        word_count[column_name] = sorted(
-            [(word, count) for word, count in counter.items()],
-            key=itemgetter(1),
-            reverse=True
-        )
-    return word_count
+def count_words():
+    word_counter = Counter()
+
+    def counter(tokens):
+        word_counter.update(tokens)
+        return word_counter.most_common()
+    return counter
 
 
 def save_csv(filename, table, counters=None):
@@ -85,27 +83,26 @@ def save_csv(filename, table, counters=None):
                 for elem in fieldname + ('',)
             ]
 
-
         csv_writer.writerow(fieldnames)
 
         columns = table.values()
         rows = zip_longest(*(iter(columns)), fillvalue=('',''))
+
         for row in rows:
             csv_writer.writerow(list(chain.from_iterable(row)))
 
 
 def main():
     morph = pymorphy2.MorphAnalyzer()
-    input_filename = 'survey.csv'
-    table = parse_csv(input_filename)
+    input_filename = 'table.csv'
+    original_table = parse_csv(input_filename)
 
-    answer_counters = [len(answers) for _, answers in table.items()]
+    answer_counters = [len(answers) for _, answers in original_table.items()]
 
-    answer_groups = collect_answers(morph, table)
-    word_count = count_words(answer_groups)
+    processed_table = process_table(morph, original_table)
 
     output_filename = 'output.csv'
-    save_csv(output_filename, word_count, counters=answer_counters)
+    save_csv(output_filename, processed_table)
 
 
 if __name__ == '__main__':
