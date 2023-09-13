@@ -1,12 +1,21 @@
 import csv
+import logging
 import re
 import string
 
+
 from collections import Counter
 from itertools import chain
+from itertools import combinations
 from itertools import zip_longest
+from operator import itemgetter
 
 import pymorphy2
+
+from wiki_ru_wordnet import WikiWordnet
+
+
+logger = logging.getLogger(__file__)
 
 
 def parse_csv(filename):
@@ -43,7 +52,50 @@ def lemmatize(morph, words):
     return lemmas
 
 
-def process_table(morph, table):
+def count_words():
+    word_counter = Counter()
+
+    def counter(tokens):
+        word_counter.update(tokens)
+        return word_counter.most_common()
+    return counter
+
+
+def get_common_hypernyms(wikiwordnet, words, max_level=10):
+    word_syns_pairs = []
+    for word in words:
+        synsets = wikiwordnet.get_synsets(word)
+        if synsets:
+            word_syns_pairs.append((word, synsets[0]))
+
+
+    synsets_combinations = list(combinations(word_syns_pairs , 2))
+
+    hypernyms_counter = Counter()
+
+    for synset_pair1, synset_pair2 in synsets_combinations:
+        word1, synset1 = synset_pair1
+        word2, synset2 = synset_pair2
+        common_hypernyms = wikiwordnet.get_common_hypernyms(
+            synset1,
+            synset2,
+            max_level=max_level
+        )
+
+        if common_hypernyms:
+            for common_hypernym, dst1, dst2 in common_hypernyms:
+                hypernyms = {
+                    hypernym.lemma()
+                    for hypernym in common_hypernym.get_words()
+                }
+                hypernyms_counter.update(hypernyms)
+
+                logger.debug(f'{(word1, word2)} {hypernyms} {dst1 + dst2}')
+
+    return hypernyms_counter
+
+
+def process_table(morph, wordnet, table):
     answers = {}
 
     for fieldname in table.keys():
@@ -56,16 +108,14 @@ def process_table(morph, table):
             processed_words = lemmatize(morph, words)
             wc = word_counter(processed_words)
         answers[fieldname] = wc
+        hypernyms = get_common_hypernyms(wordnet, column)
+        answers[f'{fieldname}_Гиперонимы'] = sorted(
+            list(hypernyms.items()),
+            key=itemgetter(1),
+            reverse=True
+        )
+
     return answers
-
-
-def count_words():
-    word_counter = Counter()
-
-    def counter(tokens):
-        word_counter.update(tokens)
-        return word_counter.most_common()
-    return counter
 
 
 def save_csv(filename, table, counters=None):
@@ -93,13 +143,21 @@ def save_csv(filename, table, counters=None):
 
 
 def main():
+
+    logging.basicConfig(
+        format='%(levelname)s:%(funcName)s: %(message)s',
+        level=logging.WARNING
+    )
+
     morph = pymorphy2.MorphAnalyzer()
+    wikiwordnet = WikiWordnet()
+
     input_filename = 'table.csv'
     original_table = parse_csv(input_filename)
 
     answer_counters = [len(answers) for _, answers in original_table.items()]
 
-    processed_table = process_table(morph, original_table)
+    processed_table = process_table(morph, wikiwordnet, original_table)
 
     output_filename = 'output.csv'
     save_csv(output_filename, processed_table)
