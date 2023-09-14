@@ -88,13 +88,16 @@ def get_common_hypernyms(wikiwordnet, words, max_level=10):
         )
 
         if common_hypernyms:
+            temp = set()
             for common_hypernym, dst1, dst2 in common_hypernyms:
+
                 hypernyms = {
                     hypernym.lemma()
                     for hypernym in common_hypernym.get_words()
                 }
-                hypernyms_counter.update(hypernyms)
-                logger.debug(f'{(word1, word2)} {hypernyms} {dst1 + dst2}')
+                temp.update(hypernyms)
+                logger.debug(f'{word1, word2} {hypernyms} {dst1 + dst2}')
+            hypernyms_counter.update(temp)
     return hypernyms_counter
 
 
@@ -169,6 +172,7 @@ def main():
     if args.file:
         input_filename = args.file
 
+    logging.getLogger('pymorphy2').setLevel(logging.WARNING)
     logging.basicConfig(
         format='%(levelname)s:%(funcName)s: %(message)s',
         level=log_level
