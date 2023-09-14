@@ -111,7 +111,10 @@ def process_table(morph, wordnet, table):
             processed_words = lemmatize(morph, words)
             wc = word_counter(processed_words)
         answers[fieldname] = wc
-        hypernyms = get_common_hypernyms(wordnet, column)
+
+        tokens = [token for token, _ in wc]
+        hypernyms = get_common_hypernyms(wordnet, tokens)
+
         answers[f'{fieldname}_Гиперонимы'] = sorted(
             list(hypernyms.items()),
             key=itemgetter(1),
