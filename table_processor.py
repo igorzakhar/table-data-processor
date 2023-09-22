@@ -36,13 +36,18 @@ def parse_csv(filename):
     return table
 
 
+def _clean_word(word):
+    word = word.replace('«', '').replace('»', '').replace('…', '')
+    word = word.strip(string.punctuation)
+    word = word.replace('ё', 'е')
+    return word
+
+
 def split_by_words(text):
     words = set()
-    cleaned_text = re.sub(f"[{string.punctuation}]", ' ', text).strip()
-
-    for word in cleaned_text.split():
-        normalized_word = word.replace('ё', 'е')
-        words.add(normalized_word)
+    for word in text.split():
+        cleaned_word = _clean_word(word)
+        words.add(cleaned_word)
     return words
 
 
